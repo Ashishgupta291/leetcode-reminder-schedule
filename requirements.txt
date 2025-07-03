@@ -1,0 +1,7 @@
+flask
+requests
+schedule
+pytz
+psycopg2-binary
+python-dotenv
+gunicorn

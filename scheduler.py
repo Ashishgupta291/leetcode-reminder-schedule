@@ -1,4 +1,3 @@
-# leetcode_reminder_app/scheduler.py
 from dotenv import load_dotenv
 import requests
 import psycopg2
@@ -8,23 +7,21 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import smtplib
 import ssl
-import time
-import schedule
-load_dotenv()
-# Email config
 
+load_dotenv()
+
+# Email config from environment
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
-# Load DB connection string from env
+# DB URL from environment
 DB_URL = os.getenv("DATABASE_URL")
 
 def get_connection():
     return psycopg2.connect(DB_URL, sslmode='require')
 
-# ✅ Fetch today's challenge slug
 def get_today_challenge_title():
     url = "https://leetcode.com/graphql"
     payload = {
@@ -45,7 +42,6 @@ def get_today_challenge_title():
     res = requests.post(url, json=payload, headers=headers)
     return res.json()['data']['activeDailyCodingChallengeQuestion']['question']['titleSlug']
 
-# ✅ Check if user has solved today's challenge
 def has_solved_today(username, today_slug):
     url = "https://leetcode.com/graphql"
     payload = {
@@ -69,7 +65,6 @@ def has_solved_today(username, today_slug):
             return True
     return False
 
-# ✅ Send email reminder
 def send_reminder_email(recipient_email, username):
     subject = "⏰ LeetCode Daily Challenge Reminder"
     body = f"""
@@ -92,7 +87,6 @@ def send_reminder_email(recipient_email, username):
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.sendmail(SENDER_EMAIL, recipient_email, message.as_string())
 
-# ✅ Core reminder logic
 def check_all_users():
     now = datetime.utcnow()
     five_min_ago = now - timedelta(minutes=5)
@@ -130,10 +124,5 @@ def check_all_users():
         if conn:
             conn.close()
 
-# 🕓 Run every 5 mins
 if __name__ == "__main__":
-    schedule.every(5).minutes.do(check_all_users)
-    print("📬 Scheduler running every 5 minutes...")
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    check_all_users()  # ← Only run once per GitHub Action trigger

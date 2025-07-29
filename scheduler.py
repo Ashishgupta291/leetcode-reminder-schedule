@@ -88,27 +88,35 @@ def send_reminder_email(recipient_email, username):
         server.sendmail(SENDER_EMAIL, recipient_email, message.as_string())
 
 def check_all_users():
-    now = datetime.utcnow()
-    five_min_ago = now - timedelta(minutes=5)
-
-    start = five_min_ago.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    today_slug = get_today_challenge_title()
+    now = datetime.utcnow().time().replace(second=0, microsecond=0)
+    five_min_ago = (datetime.utcnow() - timedelta(minutes=5)).time().replace(second=0, microsecond=0)
 
     try:
         conn = get_connection()
         c = conn.cursor()
-        c.execute("""
-            SELECT username, email FROM users
-            WHERE verified = 1
-              AND alarm_time_utc BETWEEN %s AND %s
-            ORDER BY alarm_time_utc ASC
-        """, (start, end))
+
+        if five_min_ago <= now:
+            # Normal case: same day
+            c.execute("""
+                SELECT u.email, s.leetcode_username
+                FROM schedules s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.utc_time BETWEEN %s AND %s
+            """, (five_min_ago, now))
+        else:
+            # Wrap-around midnight case: split the range
+            c.execute("""
+                SELECT u.email, s.leetcode_username
+                FROM schedules s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.utc_time >= %s OR s.utc_time <= %s
+            """, (five_min_ago, now))
 
         users = c.fetchall()
 
-        for username, email in users:
+        today_slug = get_today_challenge_title()
+
+        for email, username in users:
             try:
                 if not has_solved_today(username, today_slug):
                     send_reminder_email(email, username)
@@ -123,6 +131,7 @@ def check_all_users():
     finally:
         if conn:
             conn.close()
+
 
 if __name__ == "__main__":
     check_all_users()  # ← Only run once per GitHub Action trigger

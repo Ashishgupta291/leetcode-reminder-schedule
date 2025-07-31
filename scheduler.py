@@ -10,13 +10,13 @@ import ssl
 
 load_dotenv()
 
-# Email config from environment
+# Email config
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
-# DB URL from environment
+# DB URL
 DB_URL = os.getenv("DATABASE_URL")
 
 def get_connection():
@@ -88,41 +88,40 @@ def send_reminder_email(recipient_email, username):
         server.sendmail(SENDER_EMAIL, recipient_email, message.as_string())
 
 def check_all_users():
-    now = datetime.utcnow().time().replace(second=0, microsecond=0)
-    five_min_ago = (datetime.utcnow() - timedelta(minutes=5)).time().replace(second=0, microsecond=0)
+    today_date = datetime.utcnow().date()
+    current_time = datetime.utcnow().time().replace(second=0, microsecond=0)
 
     try:
         conn = get_connection()
         c = conn.cursor()
 
-        if five_min_ago <= now:
-            # Normal case: same day
-            c.execute("""
-                SELECT u.email, s.leetcode_username
-                FROM schedules s
-                JOIN users u ON s.user_id = u.id
-                WHERE s.utc_time BETWEEN %s AND %s
-            """, (five_min_ago, now))
-        else:
-            # Wrap-around midnight case: split the range
-            c.execute("""
-                SELECT u.email, s.leetcode_username
-                FROM schedules s
-                JOIN users u ON s.user_id = u.id
-                WHERE s.utc_time >= %s OR s.utc_time <= %s
-            """, (five_min_ago, now))
+        c.execute("""
+            SELECT s.id, u.email, s.leetcode_username
+            FROM schedules s
+            JOIN users u ON s.user_id = u.id
+            WHERE (s.last_execution_date IS NULL OR s.last_execution_date < %s)
+              AND s.utc_time <= %s;
+        """, (today_date, current_time))
 
         users = c.fetchall()
-
         today_slug = get_today_challenge_title()
 
-        for email, username in users:
+        for schedule_id, email, username in users:
             try:
                 if not has_solved_today(username, today_slug):
                     send_reminder_email(email, username)
                     print(f"📩 Sent reminder to {username}")
                 else:
                     print(f"✅ {username} already solved today’s challenge.")
+                
+                # Update last_execution_date regardless of email sent or not
+                c.execute("""
+                    UPDATE schedules
+                    SET last_execution_date = %s
+                    WHERE id = %s;
+                """, (today_date, schedule_id))
+                conn.commit()
+
             except Exception as e:
                 print(f"❌ Error processing {username}: {e}")
 
@@ -132,6 +131,5 @@ def check_all_users():
         if conn:
             conn.close()
 
-
 if __name__ == "__main__":
-    check_all_users()  # ← Only run once per GitHub Action trigger
+    check_all_users()

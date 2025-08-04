@@ -57,7 +57,13 @@ def has_solved_today(username, today_slug):
         """
     }
     res = requests.post(url, json=payload)
-    subs = res.json()['data']['recentAcSubmissionList']
+    try:
+        subs = res.json().get('data', {}).get('recentAcSubmissionList', [])
+        if subs is None:  # in case data is null
+            return False
+    except Exception as e:
+        print(f"Error for user {username}: {e}")
+        return False
     today = datetime.utcnow().date()
     for sub in subs:
         sub_date = datetime.utcfromtimestamp(int(sub['timestamp'])).date()
@@ -133,3 +139,4 @@ def check_all_users():
 
 if __name__ == "__main__":
     check_all_users()
+
